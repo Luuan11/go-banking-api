@@ -25,6 +25,7 @@ var errorMappings = []errorMapping{
 	{domain.ErrInvalidAccountID, http.StatusBadRequest, "INVALID_ACCOUNT_ID"},
 	{domain.ErrInvalidAmount, http.StatusBadRequest, "INVALID_AMOUNT"},
 	{domain.ErrInvalidDescription, http.StatusBadRequest, "INVALID_DESCRIPTION"},
+	{domain.ErrSameAccountTransfer, http.StatusBadRequest, "SAME_ACCOUNT_TRANSFER"},
 	{domain.ErrCustomerNotFound, http.StatusNotFound, "CUSTOMER_NOT_FOUND"},
 	{domain.ErrAccountNotFound, http.StatusNotFound, "ACCOUNT_NOT_FOUND"},
 	{domain.ErrCustomerAlreadyExists, http.StatusConflict, "CUSTOMER_EXISTS"},

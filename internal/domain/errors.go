@@ -20,4 +20,5 @@ var (
 	ErrInvalidAmount         = errors.New("amount must be a positive number of cents")
 	ErrInvalidDescription    = errors.New("description must have at most 255 characters")
 	ErrDailyLimitExceeded    = errors.New("daily limit exceeded")
+	ErrSameAccountTransfer   = errors.New("cannot transfer to the same account")
 )

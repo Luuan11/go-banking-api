@@ -45,6 +45,7 @@ func main() {
 	operationHandler := httpHandler.NewOperation(
 		usecase.NewDeposit(uow),
 		usecase.NewWithdraw(uow),
+		usecase.NewTransfer(uow),
 	)
 
 	mux := http.NewServeMux()
