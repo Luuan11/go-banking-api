@@ -28,10 +28,15 @@ func Logger(next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
-			"duration", time.Since(start),
+			"duration_ms", durationMs(time.Since(start)),
 			"remote_addr", r.RemoteAddr,
 		)
 	})
+}
+
+// durationMs converts d to milliseconds with microsecond precision, e.g. 1.234.
+func durationMs(d time.Duration) float64 {
+	return float64(d.Microseconds()) / 1000
 }
 
 func Recovery(next http.Handler) http.Handler {
