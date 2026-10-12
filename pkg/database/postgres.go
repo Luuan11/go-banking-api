@@ -1,88 +1,74 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
+	"time"
 
 	_ "github.com/lib/pq"
 )
 
-func Connect(databaseURL string) (*sql.DB, error) {
+type Options struct {
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+	// ConnectTimeout bounds the retries while the database comes up.
+	ConnectTimeout time.Duration
+}
+
+func (o Options) withDefaults() Options {
+	if o.MaxOpenConns <= 0 {
+		o.MaxOpenConns = 25
+	}
+	if o.MaxIdleConns <= 0 {
+		o.MaxIdleConns = 10
+	}
+	if o.ConnMaxLifetime <= 0 {
+		o.ConnMaxLifetime = 30 * time.Minute
+	}
+	if o.ConnMaxIdleTime <= 0 {
+		o.ConnMaxIdleTime = 5 * time.Minute
+	}
+	if o.ConnectTimeout <= 0 {
+		o.ConnectTimeout = 30 * time.Second
+	}
+	return o
+}
+
+// Connect retries with exponential backoff until the database answers.
+func Connect(ctx context.Context, databaseURL string, opts Options) (*sql.DB, error) {
+	opts = opts.withDefaults()
+
 	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open connection: %w", err)
 	}
 
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+	db.SetMaxOpenConns(opts.MaxOpenConns)
+	db.SetMaxIdleConns(opts.MaxIdleConns)
+	db.SetConnMaxLifetime(opts.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(opts.ConnMaxIdleTime)
+
+	ctx, cancel := context.WithTimeout(ctx, opts.ConnectTimeout)
+	defer cancel()
+
+	backoff := 500 * time.Millisecond
+	for attempt := 1; ; attempt++ {
+		err := db.PingContext(ctx)
+		if err == nil {
+			return db, nil
+		}
+
+		slog.WarnContext(ctx, "database not ready", "attempt", attempt, "retry_in", backoff.String(), "error", err)
+		select {
+		case <-ctx.Done():
+			db.Close()
+			return nil, fmt.Errorf("database unreachable after %d attempts: %w", attempt, err)
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, 5*time.Second)
 	}
-
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-
-	log.Println("database connection established successfully")
-	return db, nil
-}
-
-func CreateTables(db *sql.DB) error {
-	query := `
-	CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
-	CREATE TABLE IF NOT EXISTS customers (
-		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-		full_name VARCHAR(255) NOT NULL,
-		email VARCHAR(255) UNIQUE NOT NULL,
-		cpf VARCHAR(11) UNIQUE NOT NULL,
-		phone VARCHAR(20),
-		birth_date DATE NOT NULL,
-		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-	);
-
-	CREATE TABLE IF NOT EXISTS accounts (
-		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-		customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
-		number VARCHAR(50) UNIQUE NOT NULL,
-		type VARCHAR(20) NOT NULL,
-		balance BIGINT NOT NULL DEFAULT 0,
-		daily_limit BIGINT NOT NULL DEFAULT 100000,
-		is_active BOOLEAN NOT NULL DEFAULT true,
-		blocked_at TIMESTAMP,
-		blocked_reason TEXT,
-		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-		CONSTRAINT chk_account_type CHECK (type IN ('checking', 'savings'))
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_accounts_customer_id ON accounts(customer_id);
-	CREATE INDEX IF NOT EXISTS idx_accounts_number ON accounts(number);
-
-	CREATE TABLE IF NOT EXISTS transactions (
-		id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-		account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
-		transaction_type VARCHAR(20) NOT NULL,
-		amount BIGINT NOT NULL,
-		balance_before BIGINT NOT NULL,
-		balance_after BIGINT NOT NULL,
-		description TEXT,
-		reference_id UUID,
-		metadata JSONB,
-		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-		CONSTRAINT chk_transaction_type CHECK (
-			transaction_type IN ('deposit', 'withdrawal', 'transfer_in', 'transfer_out', 'payment', 'refund')
-		)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
-	CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at DESC);
-	`
-
-	_, err := db.Exec(query)
-	if err != nil {
-		return fmt.Errorf("failed to create tables: %w", err)
-	}
-
-	log.Println("tables verified/created successfully")
-	return nil
 }

@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/luuan11/bank-system/internal/domain"
 	"github.com/luuan11/bank-system/internal/repository"
 )
+
+const maxAccountNumberAttempts = 5
 
 type CreateAccountInput struct {
 	CustomerID uuid.UUID          `json:"customer_id"`
@@ -21,12 +24,14 @@ type CreateAccountOutput struct {
 }
 
 type CreateAccount struct {
-	accountRepo repository.Account
+	accountRepo  repository.Account
+	customerRepo repository.Customer
 }
 
-func NewCreateAccount(accountRepo repository.Account) *CreateAccount {
+func NewCreateAccount(accountRepo repository.Account, customerRepo repository.Customer) *CreateAccount {
 	return &CreateAccount{
-		accountRepo: accountRepo,
+		accountRepo:  accountRepo,
+		customerRepo: customerRepo,
 	}
 }
 
@@ -39,7 +44,12 @@ func (uc *CreateAccount) Execute(ctx context.Context, input CreateAccountInput) 
 		return nil, domain.ErrInvalidCustomerID
 	}
 
-	exists, err := uc.accountRepo.ExistsByCustomerID(ctx, input.CustomerID)
+	if _, err := uc.customerRepo.FindByID(ctx, input.CustomerID); err != nil {
+		return nil, err
+	}
+
+	// Friendly fast path; the unique constraint is what stops races.
+	exists, err := uc.accountRepo.ExistsByCustomerAndType(ctx, input.CustomerID, input.Type)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing account: %w", err)
 	}
@@ -49,14 +59,20 @@ func (uc *CreateAccount) Execute(ctx context.Context, input CreateAccountInput) 
 
 	account := domain.NewAccount(input.CustomerID, input.Type)
 
-	accountNumber, err := generateAccountNumber()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate account number: %w", err)
-	}
-	account.Number = accountNumber
+	for attempt := 1; ; attempt++ {
+		accountNumber, err := generateAccountNumber()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate account number: %w", err)
+		}
+		account.Number = accountNumber
 
-	if err := uc.accountRepo.Create(ctx, account); err != nil {
-		return nil, fmt.Errorf("failed to create account: %w", err)
+		err = uc.accountRepo.Create(ctx, account)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, repository.ErrAccountNumberTaken) || attempt == maxAccountNumberAttempts {
+			return nil, fmt.Errorf("failed to create account: %w", err)
+		}
 	}
 
 	return &CreateAccountOutput{Account: account}, nil

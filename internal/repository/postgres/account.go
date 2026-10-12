@@ -7,13 +7,16 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/luuan11/bank-system/internal/domain"
+	"github.com/luuan11/bank-system/internal/repository"
 )
 
+const accountColumns = `id, customer_id, number, type, balance, daily_limit, is_active, blocked_at, created_at, updated_at`
+
 type Account struct {
-	db *sql.DB
+	db DBTX
 }
 
-func NewAccount(db *sql.DB) *Account {
+func NewAccount(db DBTX) *Account {
 	return &Account{db: db}
 }
 
@@ -37,28 +40,62 @@ func (r *Account) Create(ctx context.Context, account *domain.Account) error {
 		account.UpdatedAt,
 	)
 
+	if constraint, ok := constraintViolation(err, uniqueViolation); ok {
+		if constraint == "accounts_number_key" {
+			return repository.ErrAccountNumberTaken
+		}
+		return domain.ErrAccountAlreadyExists
+	}
+	if _, ok := constraintViolation(err, foreignKeyViolation); ok {
+		return domain.ErrCustomerNotFound
+	}
 	return err
 }
 
 func (r *Account) FindByID(ctx context.Context, id uuid.UUID) (*domain.Account, error) {
-	query := `
-		SELECT id, customer_id, number, type, balance, daily_limit, is_active, blocked_at, created_at, updated_at 
-		FROM accounts WHERE id = $1
-	`
+	query := `SELECT ` + accountColumns + ` FROM accounts WHERE id = $1`
 	return r.scanAccount(r.db.QueryRowContext(ctx, query, id))
 }
 
+func (r *Account) FindByIDForUpdate(ctx context.Context, id uuid.UUID) (*domain.Account, error) {
+	query := `SELECT ` + accountColumns + ` FROM accounts WHERE id = $1 FOR UPDATE`
+	return r.scanAccount(r.db.QueryRowContext(ctx, query, id))
+}
+
+func (r *Account) UpdateBalance(ctx context.Context, account *domain.Account) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE accounts SET balance = $2, updated_at = $3 WHERE id = $1`,
+		account.ID,
+		account.Balance,
+		account.UpdatedAt,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return domain.ErrAccountNotFound
+	}
+	return nil
+}
+
 func (r *Account) FindByNumber(ctx context.Context, number string) (*domain.Account, error) {
-	query := `
-		SELECT id, customer_id, number, type, balance, daily_limit, is_active, blocked_at, created_at, updated_at 
-		FROM accounts WHERE number = $1
-	`
+	query := `SELECT ` + accountColumns + ` FROM accounts WHERE number = $1`
 	return r.scanAccount(r.db.QueryRowContext(ctx, query, number))
 }
 
-func (r *Account) ExistsByCustomerID(ctx context.Context, customerID uuid.UUID) (bool, error) {
+func (r *Account) ExistsByCustomerAndType(ctx context.Context, customerID uuid.UUID, accountType domain.AccountType) (bool, error) {
 	var exists bool
-	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE customer_id = $1)`, customerID).Scan(&exists)
+	err := r.db.QueryRowContext(
+		ctx,
+		`SELECT EXISTS(SELECT 1 FROM accounts WHERE customer_id = $1 AND type = $2)`,
+		customerID,
+		accountType,
+	).Scan(&exists)
 	return exists, err
 }
 
@@ -81,6 +118,14 @@ func (r *Account) scanAccount(row *sql.Row) (*domain.Account, error) {
 			return nil, domain.ErrAccountNotFound
 		}
 		return nil, err
+	}
+
+	// lib/pq returns the session time zone; the API speaks UTC.
+	account.CreatedAt = account.CreatedAt.UTC()
+	account.UpdatedAt = account.UpdatedAt.UTC()
+	if account.BlockedAt != nil {
+		blockedAt := account.BlockedAt.UTC()
+		account.BlockedAt = &blockedAt
 	}
 	return account, nil
 }
