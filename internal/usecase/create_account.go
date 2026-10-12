@@ -48,8 +48,7 @@ func (uc *CreateAccount) Execute(ctx context.Context, input CreateAccountInput) 
 		return nil, err
 	}
 
-	// Fast path for a friendly error; the unique constraint on
-	// (customer_id, type) is what actually protects against races.
+	// Friendly fast path; the unique constraint is what stops races.
 	exists, err := uc.accountRepo.ExistsByCustomerAndType(ctx, input.CustomerID, input.Type)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing account: %w", err)

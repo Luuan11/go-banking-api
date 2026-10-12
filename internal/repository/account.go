@@ -8,15 +8,13 @@ import (
 	"github.com/luuan11/bank-system/internal/domain"
 )
 
-// ErrAccountNumberTaken is returned by Create when the generated account
-// number collides with an existing one, so the caller can retry.
+// ErrAccountNumberTaken signals a number collision; the caller should retry.
 var ErrAccountNumberTaken = errors.New("account number already taken")
 
 type Account interface {
 	Create(ctx context.Context, account *domain.Account) error
 	FindByID(ctx context.Context, id uuid.UUID) (*domain.Account, error)
-	// FindByIDForUpdate locks the account row until the surrounding
-	// transaction ends. Only meaningful inside a UnitOfWork.
+	// FindByIDForUpdate locks the row until the UnitOfWork ends.
 	FindByIDForUpdate(ctx context.Context, id uuid.UUID) (*domain.Account, error)
 	UpdateBalance(ctx context.Context, account *domain.Account) error
 	FindByNumber(ctx context.Context, number string) (*domain.Account, error)

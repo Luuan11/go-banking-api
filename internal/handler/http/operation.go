@@ -17,7 +17,6 @@ type transferer interface {
 	Execute(ctx context.Context, input usecase.TransferInput) (*usecase.TransferOutput, error)
 }
 
-// Operation handles the endpoints that move money.
 type Operation struct {
 	depositUC  balanceMover
 	withdrawUC balanceMover

@@ -1,10 +1,5 @@
-// Package integration exercises the use cases against a real PostgreSQL.
-// The tests are skipped unless TEST_DATABASE_URL is set, e.g.:
-//
-//	docker compose up -d postgres
-//	TEST_DATABASE_URL=postgres://bankuser:bankpass@localhost:5432/bankdb?sslmode=disable go test ./test/...
-//
-// WARNING: the tests truncate every table of that database.
+// Package integration runs against TEST_DATABASE_URL (skipped if unset).
+// WARNING: it truncates every table.
 package integration
 
 import (
@@ -52,7 +47,7 @@ func setup(t *testing.T) *app {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	// Running twice also checks that migrations are idempotent.
+	// Twice, to check idempotency.
 	for range 2 {
 		if err := database.Migrate(ctx, db); err != nil {
 			t.Fatalf("migrate: %v", err)
@@ -80,7 +75,6 @@ func setup(t *testing.T) *app {
 	}
 }
 
-// randomCPF builds a CPF with valid verification digits.
 func randomCPF() string {
 	digits := make([]int, 11)
 	for i := range 9 {
@@ -161,8 +155,7 @@ func TestCustomerAndAccountConstraints(t *testing.T) {
 		}
 	}
 
-	// Bypass the use case pre-check to hit the unique constraint directly,
-	// as a concurrent request would.
+	// Skip the use case pre-check, like a concurrent request would.
 	duplicate := domain.NewAccount(customer.ID, domain.AccountTypeChecking)
 	duplicate.Number = "999999999999"
 	if err := a.accounts.Create(ctx, duplicate); !errors.Is(err, domain.ErrAccountAlreadyExists) {
@@ -207,8 +200,7 @@ func TestMoneyFlow(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 
-	// What the API returns right after a write must be exactly what it
-	// returns when reading the same data back.
+	// Write and read responses must match.
 	stored, err := a.accounts.FindByID(ctx, from.ID)
 	if err != nil {
 		t.Fatalf("find account: %v", err)

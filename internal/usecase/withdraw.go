@@ -30,8 +30,7 @@ func (uc *Withdraw) Execute(ctx context.Context, accountID uuid.UUID, input Move
 	err := uc.uow.Do(ctx, func(ctx context.Context, repos repository.Repositories) error {
 		now := uc.now().UTC()
 
-		// The row lock serializes every debit on this account, which also
-		// makes the daily limit sum below consistent.
+		// The row lock serializes debits, keeping the daily sum consistent.
 		account, err := repos.Accounts.FindByIDForUpdate(ctx, accountID)
 		if err != nil {
 			return err
@@ -59,8 +58,7 @@ func (uc *Withdraw) Execute(ctx context.Context, accountID uuid.UUID, input Move
 	return transaction, nil
 }
 
-// startOfDay returns midnight UTC of the day t falls in; the daily limit
-// resets at that instant.
+// startOfDay is when the daily limit resets (midnight UTC).
 func startOfDay(t time.Time) time.Time {
 	t = t.UTC()
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)

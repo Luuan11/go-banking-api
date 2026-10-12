@@ -6,8 +6,7 @@ type registrar interface {
 	Register(mux *http.ServeMux)
 }
 
-// Router wraps http.ServeMux so that requests matching no route get the same
-// JSON error envelope as the rest of the API instead of the mux's plain text.
+// Router answers unmatched routes with JSON instead of the mux plain text.
 type Router struct {
 	mux *http.ServeMux
 }
@@ -27,8 +26,6 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rt.mux.ServeHTTP(w, r)
 }
 
-// unmatchedRouteWriter replaces the mux's plain-text 404 and 405 responses
-// with JSON ones. Headers set by the mux, like Allow on a 405, are kept.
 type unmatchedRouteWriter struct {
 	http.ResponseWriter
 	replaced bool

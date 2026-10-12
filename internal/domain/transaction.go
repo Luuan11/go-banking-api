@@ -17,8 +17,7 @@ const (
 	TransactionTypeTransferOut TransactionType = "transfer_out"
 )
 
-// Transaction is an immutable ledger entry. Amount is always positive; the
-// direction is given by Type and by the balance_before/balance_after pair.
+// Transaction is an immutable ledger entry; Amount is always positive.
 type Transaction struct {
 	ID            uuid.UUID       `json:"id"`
 	AccountID     uuid.UUID       `json:"account_id"`

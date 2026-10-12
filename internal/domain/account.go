@@ -13,8 +13,7 @@ const (
 	AccountTypeSavings  AccountType = "savings"
 )
 
-// DefaultDailyLimit is the maximum amount, in cents, that can leave an
-// account (withdrawals + outgoing transfers) in a single day.
+// DefaultDailyLimit caps withdrawals + outgoing transfers per day, in cents.
 const DefaultDailyLimit int64 = 100000
 
 type Account struct {
@@ -55,7 +54,6 @@ func (a *Account) canOperate() error {
 	return nil
 }
 
-// Credit adds amount to the balance and returns the ledger entry for it.
 func (a *Account) Credit(amount int64, txType TransactionType, description string, now time.Time) (*Transaction, error) {
 	if amount <= 0 {
 		return nil, ErrInvalidAmount
@@ -67,8 +65,7 @@ func (a *Account) Credit(amount int64, txType TransactionType, description strin
 	return a.apply(amount, txType, description, now), nil
 }
 
-// Debit removes amount from the balance. spentToday is the sum of debits
-// already made today and is used to enforce the daily limit.
+// Debit enforces balance and daily limit; spentToday is what already left today.
 func (a *Account) Debit(amount, spentToday int64, txType TransactionType, description string, now time.Time) (*Transaction, error) {
 	if amount <= 0 {
 		return nil, ErrInvalidAmount

@@ -14,12 +14,10 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// migrationLockID is an arbitrary key for pg_advisory_lock, so that several
-// instances starting at the same time don't apply migrations concurrently.
+// migrationLockID keeps concurrent instances from migrating at the same time.
 const migrationLockID = 727160
 
-// Migrate applies every embedded migration that hasn't been applied yet,
-// each one inside its own transaction, in file name order.
+// Migrate applies pending migrations in file order, one transaction each.
 func Migrate(ctx context.Context, db *sql.DB) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {

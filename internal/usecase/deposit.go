@@ -9,8 +9,7 @@ import (
 	"github.com/luuan11/bank-system/internal/repository"
 )
 
-// MovementInput is the payload of a deposit or a withdrawal. Amount is in
-// cents.
+// MovementInput amounts are in cents.
 type MovementInput struct {
 	Amount      int64  `json:"amount"`
 	Description string `json:"description"`

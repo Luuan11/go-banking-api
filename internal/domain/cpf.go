@@ -2,8 +2,7 @@ package domain
 
 import "strings"
 
-// NormalizeCPF strips everything that is not a digit, so "123.456.789-09"
-// and "12345678909" are stored the same way.
+// NormalizeCPF keeps only digits: "529.982.247-25" -> "52998224725".
 func NormalizeCPF(cpf string) string {
 	var b strings.Builder
 	for _, r := range cpf {
@@ -14,8 +13,7 @@ func NormalizeCPF(cpf string) string {
 	return b.String()
 }
 
-// IsValidCPF checks length and both verification digits of an already
-// normalized CPF.
+// IsValidCPF expects a normalized CPF.
 func IsValidCPF(cpf string) bool {
 	if len(cpf) != 11 {
 		return false

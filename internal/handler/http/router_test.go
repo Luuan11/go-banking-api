@@ -30,8 +30,6 @@ func TestRouterUnmatchedRoutesReturnJSON(t *testing.T) {
 
 	t.Run("matched route is untouched", func(t *testing.T) {
 		rec, resp := do(t, router, http.MethodPost, "/api/transfers", `{"amount":1}`)
-		// stubTransferer returns (nil, nil), so a 201 with no data proves the
-		// request reached the handler instead of the fallback.
 		if rec.Code != http.StatusCreated || !resp.Success {
 			t.Errorf("status = %d, resp = %+v", rec.Code, resp)
 		}

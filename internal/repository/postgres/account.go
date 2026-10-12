@@ -120,8 +120,7 @@ func (r *Account) scanAccount(row *sql.Row) (*domain.Account, error) {
 		return nil, err
 	}
 
-	// lib/pq returns TIMESTAMPTZ in the session time zone; the API always
-	// speaks UTC.
+	// lib/pq returns the session time zone; the API speaks UTC.
 	account.CreatedAt = account.CreatedAt.UTC()
 	account.UpdatedAt = account.UpdatedAt.UTC()
 	if account.BlockedAt != nil {

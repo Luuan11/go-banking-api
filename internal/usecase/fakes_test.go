@@ -12,15 +12,14 @@ import (
 	"github.com/luuan11/bank-system/internal/repository"
 )
 
-// memoryStore is an in-memory stand-in for postgres. Do() snapshots the
-// state and restores it when fn fails, mimicking a rollback.
+// memoryStore fakes postgres; Do() restores a snapshot on error (rollback).
 type memoryStore struct {
 	mu           sync.Mutex
 	customers    map[uuid.UUID]domain.Customer
 	accounts     map[uuid.UUID]domain.Account
 	transactions []domain.Transaction
 
-	// takenNumbers forces account number collisions in tests.
+	// takenNumbers forces account number collisions.
 	takenNumbers int
 }
 
@@ -88,8 +87,7 @@ func (r *memoryCustomers) FindByID(_ context.Context, id uuid.UUID) (*domain.Cus
 	return &c, nil
 }
 
-// memoryAccounts takes the store lock itself unless it runs inside Do(),
-// which already holds it.
+// locked is true inside Do(), which already holds the store lock.
 type memoryAccounts struct {
 	s      *memoryStore
 	locked bool

@@ -34,7 +34,6 @@ func Logger(next http.Handler) http.Handler {
 	})
 }
 
-// durationMs converts d to milliseconds with microsecond precision, e.g. 1.234.
 func durationMs(d time.Duration) float64 {
 	return float64(d.Microseconds()) / 1000
 }

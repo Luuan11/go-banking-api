@@ -35,8 +35,7 @@ var errorMappings = []errorMapping{
 	{domain.ErrAccountInactive, http.StatusUnprocessableEntity, "ACCOUNT_INACTIVE"},
 }
 
-// writeError translates domain errors into HTTP responses. Anything unknown
-// is logged and returned as a generic 500 so internals don't leak.
+// writeError maps domain errors to HTTP; unknown errors become a logged 500.
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	for _, m := range errorMappings {
 		if errors.Is(err, m.err) {

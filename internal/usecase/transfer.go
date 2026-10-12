@@ -94,8 +94,7 @@ func (uc *Transfer) Execute(ctx context.Context, input TransferInput) (*Transfer
 	return output, nil
 }
 
-// lockPair locks both accounts always in the same (id) order, so two
-// opposite transfers between the same accounts can't deadlock each other.
+// lockPair locks in id order so opposite transfers cannot deadlock.
 func lockPair(ctx context.Context, accounts repository.Account, fromID, toID uuid.UUID) (from, to *domain.Account, err error) {
 	firstID, secondID := fromID, toID
 	if bytes.Compare(firstID[:], secondID[:]) > 0 {

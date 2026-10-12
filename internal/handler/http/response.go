@@ -46,8 +46,7 @@ func write(w http.ResponseWriter, statusCode int, body Response) {
 
 var errInvalidBody = errors.New("invalid request body")
 
-// decodeJSON reads a size-limited body and rejects unknown fields, so typos
-// in the payload fail loudly instead of being silently ignored.
+// decodeJSON limits body size and rejects unknown fields.
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	dec := json.NewDecoder(r.Body)
