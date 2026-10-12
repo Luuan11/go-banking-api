@@ -271,7 +271,7 @@ type pingFunc func(context.Context) error
 
 func (f pingFunc) PingContext(ctx context.Context) error { return f(ctx) }
 
-func TestHealthHandler(t *testing.T) {
+func TestHealthReady(t *testing.T) {
 	tests := []struct {
 		name   string
 		err    error
@@ -291,7 +291,7 @@ func TestHealthHandler(t *testing.T) {
 				return tt.err
 			})).Register(mux)
 
-			rec, resp := do(t, mux, http.MethodGet, "/health", "")
+			rec, resp := do(t, mux, http.MethodGet, "/health/ready", "")
 			if rec.Code != tt.status {
 				t.Fatalf("status = %d, want %d", rec.Code, tt.status)
 			}
@@ -299,5 +299,32 @@ func TestHealthHandler(t *testing.T) {
 				t.Errorf("error = %+v", resp.Error)
 			}
 		})
+	}
+}
+
+func TestHealthLiveIgnoresDatabase(t *testing.T) {
+	mux := http.NewServeMux()
+	NewHealth(pingFunc(func(context.Context) error {
+		t.Error("liveness must not ping the database")
+		return errors.New("down")
+	})).Register(mux)
+
+	if rec, _ := do(t, mux, http.MethodGet, "/health/live", ""); rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+func TestHealthDrain(t *testing.T) {
+	mux := http.NewServeMux()
+	health := NewHealth(pingFunc(func(context.Context) error { return nil }))
+	health.Register(mux)
+	health.Drain()
+
+	rec, resp := do(t, mux, http.MethodGet, "/health/ready", "")
+	if rec.Code != http.StatusServiceUnavailable || resp.Error.Code != "SHUTTING_DOWN" {
+		t.Errorf("status = %d, error = %+v", rec.Code, resp.Error)
+	}
+	if rec, _ := do(t, mux, http.MethodGet, "/health/live", ""); rec.Code != http.StatusOK {
+		t.Errorf("live status = %d, want 200 while draining", rec.Code)
 	}
 }

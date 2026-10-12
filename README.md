@@ -12,10 +12,11 @@ A banking REST API written in Go, following Clean Architecture. It handles custo
 - Versioned SQL migrations embedded in the binary
 - Structured JSON logs with request IDs, Prometheus metrics, graceful shutdown and server timeouts
 - Unit tests, PostgreSQL integration tests (including concurrency tests) and CI
+- Production-ready container: distroless non-root image, self health check, liveness/readiness probes, connection retry and graceful draining
 
 ## Tech stack
 
-Go 1.26 (standard library `net/http` router) · PostgreSQL 16 · `lib/pq` · Docker · GitHub Actions
+Go 1.26 (standard library `net/http` router) · PostgreSQL 16 · `lib/pq` · Prometheus · Grafana · Docker · GitHub Actions
 
 ## Project structure
 
@@ -26,10 +27,13 @@ internal/usecase              # application use cases
 internal/repository           # repository and unit-of-work interfaces
 internal/repository/postgres  # PostgreSQL implementations
 internal/handler/http         # HTTP handlers, routing and error mapping
-internal/middleware           # logging, panic recovery, CORS
+internal/metrics              # Prometheus metrics
+internal/middleware           # request id, logging, metrics, panic recovery, CORS
 pkg/config                    # environment configuration
-pkg/database                  # connection and embedded migrations
+pkg/database                  # connection (with retry) and embedded migrations
+pkg/logger                    # slog setup that adds request_id to every line
 test/integration              # tests against a real PostgreSQL
+deploy/                       # Prometheus and Grafana provisioning
 ```
 
 ## Running
@@ -37,10 +41,14 @@ test/integration              # tests against a real PostgreSQL
 ### With Docker
 
 ```bash
-docker compose up --build
+cp .env.example .env   # optional; every value has a default
+docker compose up -d --build --wait
+
+# with Prometheus (localhost:9090) and Grafana (localhost:3000, dashboard "Bank API")
+docker compose --profile observability up -d --build --wait
 ```
 
-The API listens on `http://localhost:8080`. Migrations run automatically on startup.
+The API listens on `http://localhost:8080`. Migrations run automatically on startup. A `Makefile` wraps the usual commands (`make up`, `make test`, `make cover`, `make vuln`, ...).
 
 > If you ran an older version of this project before, its tables were created without migrations. Reset the volume once with `docker compose down -v`.
 
@@ -56,8 +64,12 @@ go run ./cmd/api
 | `DATABASE_URL`     | `postgres://bankuser:bankpass@localhost:5432/bankdb?sslmode=disable`     |
 | `SERVER_PORT`      | `8080`                                                                   |
 | `SHUTDOWN_TIMEOUT` | `10s`                                                                    |
+| `DRAIN_DELAY`      | `0s`: how long to keep serving after readiness turns 503              |
 | `LOG_LEVEL`        | `info` (`debug`, `info`, `warn`, `error`)                                |
 | `LOG_FORMAT`       | `json` (`json`, `text`)                                                  |
+| `DB_MAX_OPEN_CONNS` / `DB_MAX_IDLE_CONNS` | `25` / `10`                                       |
+| `DB_CONN_MAX_LIFETIME` / `DB_CONN_MAX_IDLE_TIME` | `30m` / `5m`                               |
+| `DB_CONNECT_TIMEOUT` | `30s`: startup retries with backoff while the database comes up        |
 
 ## API
 
@@ -70,7 +82,8 @@ All amounts are integers in **cents** (`1050` = R$ 10,50). Every response uses t
 
 | Method | Path                                 | Description                     |
 | ------ | ------------------------------------ | ------------------------------- |
-| GET    | `/health`                            | Health check (pings the database) |
+| GET    | `/health/live`                       | Liveness: the process is serving |
+| GET    | `/health/ready`                      | Readiness: database reachable and not shutting down |
 | GET    | `/metrics`                           | Prometheus metrics              |
 | POST   | `/api/customers`                     | Create a customer               |
 | GET    | `/api/customers/{id}`                | Get a customer                  |
@@ -123,7 +136,7 @@ curl "localhost:8080/api/accounts/<account id>/transactions?limit=10"
 | 405 | `METHOD_NOT_ALLOWED` |
 | 409 | `CUSTOMER_EXISTS`, `ACCOUNT_EXISTS` |
 | 422 | `INSUFFICIENT_BALANCE`, `DAILY_LIMIT_EXCEEDED`, `ACCOUNT_INACTIVE` |
-| 503 | `DATABASE_UNAVAILABLE` |
+| 503 | `DATABASE_UNAVAILABLE`, `SHUTTING_DOWN` |
 
 ## Observability
 
@@ -170,6 +183,18 @@ histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_
 rate(bank_operations_total{operation="transfer", result="INSUFFICIENT_BALANCE"}[5m])
 ```
 
+## Production
+
+- **Image:** multi-stage build into `distroless/static:nonroot`, with no shell and no root user. The version is stamped with `--build-arg VERSION=...` and shows up in logs and in `bank_build_info`.
+- **Health:** `HEALTHCHECK` runs `/api healthcheck`, the binary probing its own `/health/live`, so no curl is needed in the image. For Kubernetes, point `livenessProbe` at `/health/live` and `readinessProbe` at `/health/ready`.
+- **Startup:** the app retries the database with exponential backoff (up to `DB_CONNECT_TIMEOUT`). Migrations take a Postgres advisory lock, so several replicas can start at once.
+- **Shutdown:** on `SIGTERM`, readiness turns `503 SHUTTING_DOWN`, the app waits `DRAIN_DELAY` (set it to about 5s behind a load balancer), then drains in-flight requests for up to `SHUTDOWN_TIMEOUT`.
+- **Compose hardening:** read-only filesystem, `no-new-privileges`, CPU/memory limits with `GOMEMLIMIT`, and Postgres, Prometheus and Grafana bound to `127.0.0.1`.
+- **CI/CD:**
+  - **CI:** `gofmt`, `go vet`, tests with `-race` and coverage, and `govulncheck`. An end-to-end job starts the whole compose stack and checks the API, request id propagation, metrics, the Prometheus scrape, the Grafana dashboard, the container health status and graceful shutdown.
+  - **Release:** pushes to `main` and `v*` tags publish `ghcr.io/luuan11/go-banking-api`.
+  - **Dependabot:** keeps Go modules, Actions and the base images up to date.
+
 ## Design notes
 
 - **Consistency:** a money movement locks the involved account rows with `SELECT ... FOR UPDATE` inside a transaction. The balance update and the ledger entry are committed together. A `CHECK (balance >= 0)` constraint is the last line of defense.
@@ -196,3 +221,5 @@ The integration tests include concurrency scenarios: 20 parallel withdrawals aga
 - Idempotency keys for money movements
 - Account blocking / closing endpoints
 - OpenAPI documentation
+- Distributed tracing (OpenTelemetry)
+- Alerting rules for the dashboard metrics

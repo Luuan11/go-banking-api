@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
 
@@ -11,7 +12,8 @@ type pinger interface {
 }
 
 type Health struct {
-	db pinger
+	db       pinger
+	draining atomic.Bool
 }
 
 func NewHealth(db pinger) *Health {
@@ -19,10 +21,26 @@ func NewHealth(db pinger) *Health {
 }
 
 func (h *Health) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /health", h.Check)
+	mux.HandleFunc("GET /health/live", h.Live)
+	mux.HandleFunc("GET /health/ready", h.Ready)
 }
 
-func (h *Health) Check(w http.ResponseWriter, r *http.Request) {
+// Drain fails readiness so load balancers stop routing before shutdown.
+func (h *Health) Drain() {
+	h.draining.Store(true)
+}
+
+// Live only says the process is serving; it never checks dependencies.
+func (h *Health) Live(w http.ResponseWriter, _ *http.Request) {
+	JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Health) Ready(w http.ResponseWriter, r *http.Request) {
+	if h.draining.Load() {
+		Error(w, http.StatusServiceUnavailable, "SHUTTING_DOWN", "server is shutting down")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 

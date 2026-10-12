@@ -1,8 +1,14 @@
 package http
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/luuan11/bank-system/internal/middleware"
 )
 
 func TestRouterUnmatchedRoutesReturnJSON(t *testing.T) {
@@ -25,6 +31,18 @@ func TestRouterUnmatchedRoutesReturnJSON(t *testing.T) {
 		}
 		if allow := rec.Header().Get("Allow"); allow != "POST" {
 			t.Errorf("Allow = %q, want POST", allow)
+		}
+	})
+
+	t.Run("error code reaches the request log", func(t *testing.T) {
+		var buf bytes.Buffer
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(previous) })
+
+		middleware.Logger(router).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/nope", nil))
+		if !strings.Contains(buf.String(), `"error_code":"ROUTE_NOT_FOUND"`) {
+			t.Errorf("log = %s", buf.String())
 		}
 	})
 

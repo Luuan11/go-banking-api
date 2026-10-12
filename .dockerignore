@@ -2,4 +2,8 @@
 .github
 *.md
 docker-compose.yml
+deploy
+Makefile
 .env
+.env.*
+coverage.out

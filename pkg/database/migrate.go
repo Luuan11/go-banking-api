@@ -66,7 +66,7 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		if err := applyMigration(ctx, conn, version, string(content)); err != nil {
 			return err
 		}
-		slog.Info("migration applied", "version", version)
+		slog.Info("migration applied", "migration", version)
 		applied++
 	}
 

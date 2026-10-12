@@ -41,7 +41,7 @@ func setup(t *testing.T) *app {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 
-	db, err := database.Connect(ctx, url)
+	db, err := database.Connect(ctx, url, database.Options{})
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}

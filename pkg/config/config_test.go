@@ -30,6 +30,17 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 }
 
+func TestDatabaseOptions(t *testing.T) {
+	t.Setenv("DB_MAX_OPEN_CONNS", "40")
+	t.Setenv("DB_MAX_IDLE_CONNS", "not-a-number")
+	t.Setenv("DB_CONNECT_TIMEOUT", "1m")
+
+	db := Load().Database
+	if db.MaxOpenConns != 40 || db.MaxIdleConns != 10 || db.ConnectTimeout != time.Minute {
+		t.Errorf("unexpected database options: %+v", db)
+	}
+}
+
 func TestInvalidDurationFallsBack(t *testing.T) {
 	t.Setenv("SHUTDOWN_TIMEOUT", "soon")
 	if got := Load().ShutdownTimeout; got != 10*time.Second {

@@ -25,10 +25,28 @@ import (
 var version = "dev"
 
 func main() {
+	// The distroless image has no shell or curl, so the binary probes itself.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheck(config.Load().ServerPort))
+	}
+
 	if err := run(); err != nil {
 		slog.Error("server stopped with error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func healthcheck(port string) int {
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/health/live")
+	if err != nil {
+		return 1
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }
 
 func run() error {
@@ -44,7 +62,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	db, err := database.Connect(ctx, cfg.DatabaseURL)
+	db, err := database.Connect(ctx, cfg.DatabaseURL, cfg.Database)
 	if err != nil {
 		return err
 	}
@@ -63,8 +81,9 @@ func run() error {
 	transactionRepo := postgres.NewTransaction(db)
 	uow := postgres.NewUnitOfWork(db)
 
+	health := httpHandler.NewHealth(db)
 	router := httpHandler.NewRouter(
-		httpHandler.NewHealth(db),
+		health,
 		httpHandler.NewCustomer(
 			usecase.NewCreateCustomer(customerRepo),
 			usecase.NewGetCustomer(customerRepo),
@@ -92,6 +111,7 @@ func run() error {
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	serverErr := make(chan error, 1)
@@ -109,9 +129,16 @@ func run() error {
 	case <-ctx.Done():
 	}
 
-	slog.Info("shutting down", "timeout", cfg.ShutdownTimeout.String())
+	health.Drain()
+	slog.Info("shutting down", "drain_delay", cfg.DrainDelay.String(), "timeout", cfg.ShutdownTimeout.String())
+	time.Sleep(cfg.DrainDelay)
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 
-	return server.Shutdown(shutdownCtx)
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	slog.Info("server stopped")
+	return nil
 }

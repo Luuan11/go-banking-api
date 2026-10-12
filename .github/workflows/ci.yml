@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -40,8 +43,7 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # -coverpkg makes code exercised by test/integration (repositories,
-      # migrations) count towards the coverage of the packages it lives in.
+      # -coverpkg counts code exercised by test/integration too.
       - name: Test
         run: go test -race -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
 
@@ -55,10 +57,58 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  docker:
+  vulncheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build image
-        run: docker build -t bank-api .
+      - uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack
+        run: docker compose --profile observability up -d --build --wait
+        env:
+          VERSION: ci-${{ github.sha }}
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          api=http://localhost:8080
+
+          curl -fsS $api/health/live
+          curl -fsS $api/health/ready
+
+          customer=$(curl -fsS -X POST $api/api/customers \
+            -d '{"full_name":"CI","email":"ci@example.com","cpf":"52998224725","birth_date":"1990-01-01"}' | jq -r .data.id)
+          account=$(curl -fsS -X POST $api/api/accounts \
+            -d "{\"customer_id\":\"$customer\",\"type\":\"checking\"}" | jq -r .data.id)
+          curl -fsS -X POST $api/api/accounts/$account/deposits -d '{"amount":1000}'
+
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST $api/api/accounts/$account/withdrawals -d '{"amount":5000}')
+          test "$status" = 422
+
+          request_id=$(curl -fsS -D - -o /dev/null -H 'X-Request-ID: ci-trace-1' $api/api/accounts/$account | grep -i '^x-request-id' | tr -d '\r' | cut -d' ' -f2)
+          test "$request_id" = ci-trace-1
+          docker compose logs app | grep '"request_id":"ci-trace-1"'
+
+          curl -fsS $api/metrics | grep 'bank_operations_total{operation="withdrawal",result="INSUFFICIENT_BALANCE"} 1'
+          curl -fsS $api/metrics | grep "bank_build_info{go_version=\"go.*\",version=\"ci-${GITHUB_SHA}\"} 1"
+
+          test "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)")" = healthy
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22bank-api%22%7D' | grep '"value":\[[0-9.]*,"1"\]'
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors -u admin:admin http://localhost:3000/api/dashboards/uid/bank-api | jq -e '.dashboard.title == "Bank API"'
+
+      - name: Graceful shutdown
+        run: |
+          docker compose stop app
+          docker compose logs app | grep '"msg":"server stopped"'
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
