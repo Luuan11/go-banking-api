@@ -49,26 +49,27 @@ func run() error {
 	transactionRepo := postgres.NewTransaction(db)
 	uow := postgres.NewUnitOfWork(db)
 
-	mux := http.NewServeMux()
-	httpHandler.NewHealth(db).Register(mux)
-	httpHandler.NewCustomer(
-		usecase.NewCreateCustomer(customerRepo),
-		usecase.NewGetCustomer(customerRepo),
-	).Register(mux)
-	httpHandler.NewAccount(
-		usecase.NewCreateAccount(accountRepo, customerRepo),
-		usecase.NewGetAccount(accountRepo),
-		usecase.NewListTransactions(accountRepo, transactionRepo),
-	).Register(mux)
-	httpHandler.NewOperation(
-		usecase.NewDeposit(uow),
-		usecase.NewWithdraw(uow),
-		usecase.NewTransfer(uow),
-	).Register(mux)
+	router := httpHandler.NewRouter(
+		httpHandler.NewHealth(db),
+		httpHandler.NewCustomer(
+			usecase.NewCreateCustomer(customerRepo),
+			usecase.NewGetCustomer(customerRepo),
+		),
+		httpHandler.NewAccount(
+			usecase.NewCreateAccount(accountRepo, customerRepo),
+			usecase.NewGetAccount(accountRepo),
+			usecase.NewListTransactions(accountRepo, transactionRepo),
+		),
+		httpHandler.NewOperation(
+			usecase.NewDeposit(uow),
+			usecase.NewWithdraw(uow),
+			usecase.NewTransfer(uow),
+		),
+	)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.ServerPort,
-		Handler:           middleware.Recovery(middleware.Logger(middleware.CORS(mux))),
+		Handler:           middleware.Recovery(middleware.Logger(middleware.CORS(router))),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
