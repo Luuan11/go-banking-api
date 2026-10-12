@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -249,5 +250,44 @@ func TestListTransactions(t *testing.T) {
 
 	if _, err := uc.Execute(ctx, ListTransactionsInput{AccountID: uuid.New()}); !errors.Is(err, domain.ErrAccountNotFound) {
 		t.Errorf("err = %v, want ErrAccountNotFound", err)
+	}
+}
+
+func TestGetCustomerAndAccount(t *testing.T) {
+	store := newMemoryStore()
+	customer := store.addCustomer()
+	account := store.addAccount(42)
+
+	gotCustomer, err := NewGetCustomer(&memoryCustomers{s: store}).Execute(ctx, customer.ID)
+	if err != nil || gotCustomer.ID != customer.ID {
+		t.Errorf("get customer = %+v, %v", gotCustomer, err)
+	}
+	if _, err := NewGetCustomer(&memoryCustomers{s: store}).Execute(ctx, uuid.New()); !errors.Is(err, domain.ErrCustomerNotFound) {
+		t.Errorf("err = %v, want ErrCustomerNotFound", err)
+	}
+
+	gotAccount, err := NewGetAccount(&memoryAccounts{s: store}).Execute(ctx, account.ID)
+	if err != nil || gotAccount.Balance != 42 {
+		t.Errorf("get account = %+v, %v", gotAccount, err)
+	}
+	if _, err := NewGetAccount(&memoryAccounts{s: store}).Execute(ctx, uuid.New()); !errors.Is(err, domain.ErrAccountNotFound) {
+		t.Errorf("err = %v, want ErrAccountNotFound", err)
+	}
+}
+
+func TestMovementDescriptionTooLong(t *testing.T) {
+	store := newMemoryStore()
+	account := store.addAccount(100)
+	long := strings.Repeat("a", domain.MaxDescriptionLength+1)
+
+	if _, err := NewDeposit(store).Execute(ctx, account.ID, MovementInput{Amount: 1, Description: long}); !errors.Is(err, domain.ErrInvalidDescription) {
+		t.Errorf("deposit err = %v, want ErrInvalidDescription", err)
+	}
+	if _, err := NewWithdraw(store).Execute(ctx, account.ID, MovementInput{Amount: 1, Description: long}); !errors.Is(err, domain.ErrInvalidDescription) {
+		t.Errorf("withdraw err = %v, want ErrInvalidDescription", err)
+	}
+	other := store.addAccount(0)
+	if _, err := NewTransfer(store).Execute(ctx, TransferInput{FromAccountID: account.ID, ToAccountID: other.ID, Amount: 1, Description: long}); !errors.Is(err, domain.ErrInvalidDescription) {
+		t.Errorf("transfer err = %v, want ErrInvalidDescription", err)
 	}
 }

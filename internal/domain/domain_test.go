@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,4 +154,24 @@ func TestAccountDebit(t *testing.T) {
 			t.Errorf("err = %v, want ErrInvalidAmount", err)
 		}
 	})
+}
+
+func TestAccountTypeIsValid(t *testing.T) {
+	for _, valid := range []AccountType{AccountTypeChecking, AccountTypeSavings} {
+		if !valid.IsValid() {
+			t.Errorf("%q should be valid", valid)
+		}
+	}
+	if AccountType("crypto").IsValid() {
+		t.Error("crypto should be invalid")
+	}
+}
+
+func TestValidateDescription(t *testing.T) {
+	if err := ValidateDescription(strings.Repeat("é", MaxDescriptionLength)); err != nil {
+		t.Errorf("255 multi-byte runes should be valid, got %v", err)
+	}
+	if err := ValidateDescription(strings.Repeat("a", MaxDescriptionLength+1)); !errors.Is(err, ErrInvalidDescription) {
+		t.Errorf("err = %v, want ErrInvalidDescription", err)
+	}
 }

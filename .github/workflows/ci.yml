@@ -40,8 +40,20 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # -coverpkg makes code exercised by test/integration (repositories,
+      # migrations) count towards the coverage of the packages it lives in.
       - name: Test
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: |
+          go tool cover -func=coverage.out | tail -n 1
+          {
+            echo '### Coverage'
+            echo '```'
+            go tool cover -func=coverage.out | tail -n 1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   docker:
     runs-on: ubuntu-latest
