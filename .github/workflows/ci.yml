@@ -31,7 +31,7 @@ jobs:
       TEST_DATABASE_URL: postgres://bankuser:bankpass@localhost:5432/bankdb_test?sslmode=disable
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
@@ -60,7 +60,7 @@ jobs:
   vulncheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: golang/govulncheck-action@v1
         with:
@@ -69,7 +69,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Start stack
         run: docker compose --profile observability up -d --build --wait
