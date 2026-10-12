@@ -31,6 +31,7 @@ func main() {
 
 	customerRepo := postgres.NewCustomer(db)
 	accountRepo := postgres.NewAccount(db)
+	transactionRepo := postgres.NewTransaction(db)
 
 	customerHandler := httpHandler.NewCustomer(
 		usecase.NewCreateCustomer(customerRepo),
@@ -39,6 +40,7 @@ func main() {
 	accountHandler := httpHandler.NewAccount(
 		usecase.NewCreateAccount(accountRepo, customerRepo),
 		usecase.NewGetAccount(accountRepo),
+		usecase.NewListTransactions(accountRepo, transactionRepo),
 	)
 
 	uow := postgres.NewUnitOfWork(db)

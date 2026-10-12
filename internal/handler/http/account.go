@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/luuan11/bank-system/internal/domain"
@@ -17,21 +18,28 @@ type accountGetter interface {
 	Execute(ctx context.Context, id uuid.UUID) (*domain.Account, error)
 }
 
-type Account struct {
-	createAccountUC accountCreator
-	getAccountUC    accountGetter
+type transactionLister interface {
+	Execute(ctx context.Context, input usecase.ListTransactionsInput) (*usecase.ListTransactionsOutput, error)
 }
 
-func NewAccount(createAccountUC accountCreator, getAccountUC accountGetter) *Account {
+type Account struct {
+	createAccountUC    accountCreator
+	getAccountUC       accountGetter
+	listTransactionsUC transactionLister
+}
+
+func NewAccount(createAccountUC accountCreator, getAccountUC accountGetter, listTransactionsUC transactionLister) *Account {
 	return &Account{
-		createAccountUC: createAccountUC,
-		getAccountUC:    getAccountUC,
+		createAccountUC:    createAccountUC,
+		getAccountUC:       getAccountUC,
+		listTransactionsUC: listTransactionsUC,
 	}
 }
 
 func (h *Account) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/accounts", h.Create)
 	mux.HandleFunc("GET /api/accounts/{id}", h.Get)
+	mux.HandleFunc("GET /api/accounts/{id}/transactions", h.ListTransactions)
 }
 
 func (h *Account) Create(w http.ResponseWriter, r *http.Request) {
@@ -64,4 +72,43 @@ func (h *Account) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSON(w, http.StatusOK, account)
+}
+
+func (h *Account) ListTransactions(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r, "id")
+	if !ok {
+		writeError(w, r, domain.ErrInvalidAccountID)
+		return
+	}
+
+	limit, err := queryInt(r, "limit")
+	if err != nil {
+		Error(w, http.StatusBadRequest, "INVALID_LIMIT", "limit must be an integer")
+		return
+	}
+	offset, err := queryInt(r, "offset")
+	if err != nil {
+		Error(w, http.StatusBadRequest, "INVALID_OFFSET", "offset must be an integer")
+		return
+	}
+
+	output, err := h.listTransactionsUC.Execute(r.Context(), usecase.ListTransactionsInput{
+		AccountID: id,
+		Limit:     limit,
+		Offset:    offset,
+	})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+
+	JSON(w, http.StatusOK, output)
+}
+
+func queryInt(r *http.Request, key string) (int, error) {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(value)
 }

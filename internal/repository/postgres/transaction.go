@@ -51,3 +51,50 @@ func (r *Transaction) SumDebitsSince(ctx context.Context, accountID uuid.UUID, s
 	err := r.db.QueryRowContext(ctx, query, accountID, since).Scan(&total)
 	return total, err
 }
+
+func (r *Transaction) ListByAccount(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]domain.Transaction, int, error) {
+	var total int
+	if err := r.db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM transactions WHERE account_id = $1`,
+		accountID,
+	).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := `
+		SELECT id, account_id, transaction_type, amount, balance_before, balance_after,
+		       COALESCE(description, ''), reference_id, created_at
+		FROM transactions
+		WHERE account_id = $1
+		ORDER BY created_at DESC, id
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, accountID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	transactions := make([]domain.Transaction, 0, limit)
+	for rows.Next() {
+		var t domain.Transaction
+		if err := rows.Scan(
+			&t.ID,
+			&t.AccountID,
+			&t.Type,
+			&t.Amount,
+			&t.BalanceBefore,
+			&t.BalanceAfter,
+			&t.Description,
+			&t.ReferenceID,
+			&t.CreatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		transactions = append(transactions, t)
+	}
+
+	return transactions, total, rows.Err()
+}
