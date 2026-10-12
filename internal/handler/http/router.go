@@ -6,6 +6,10 @@ type registrar interface {
 	Register(mux *http.ServeMux)
 }
 
+type RegisterFunc func(mux *http.ServeMux)
+
+func (f RegisterFunc) Register(mux *http.ServeMux) { f(mux) }
+
 // Router answers unmatched routes with JSON instead of the mux plain text.
 type Router struct {
 	mux *http.ServeMux

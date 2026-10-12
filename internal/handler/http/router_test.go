@@ -6,7 +6,7 @@ import (
 )
 
 func TestRouterUnmatchedRoutesReturnJSON(t *testing.T) {
-	router := NewRouter(NewOperation(&stubMover{}, &stubMover{}, stubTransferer{}))
+	router := NewRouter(NewOperation(&stubMover{}, &stubMover{}, stubTransferer{}, &stubRecorder{}))
 
 	t.Run("unknown route", func(t *testing.T) {
 		rec, resp := do(t, router, http.MethodGet, "/api/nope", "")

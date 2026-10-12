@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,6 +28,12 @@ func (s *stubMover) Execute(_ context.Context, accountID uuid.UUID, input usecas
 	return &domain.Transaction{ID: uuid.New(), AccountID: accountID, Amount: input.Amount}, nil
 }
 
+type stubRecorder struct{ calls []string }
+
+func (s *stubRecorder) Operation(operation string, amount int64, result string) {
+	s.calls = append(s.calls, fmt.Sprintf("%s:%d:%s", operation, amount, result))
+}
+
 type stubTransferer struct{ err error }
 
 func (s stubTransferer) Execute(context.Context, usecase.TransferInput) (*usecase.TransferOutput, error) {
@@ -35,7 +42,7 @@ func (s stubTransferer) Execute(context.Context, usecase.TransferInput) (*usecas
 
 func newTestMux(mover *stubMover, transferErr error) *http.ServeMux {
 	mux := http.NewServeMux()
-	NewOperation(mover, mover, stubTransferer{err: transferErr}).Register(mux)
+	NewOperation(mover, mover, stubTransferer{err: transferErr}, &stubRecorder{}).Register(mux)
 	return mux
 }
 
@@ -110,5 +117,22 @@ func TestTransferHandlerSameAccount(t *testing.T) {
 	rec, resp := do(t, newTestMux(&stubMover{}, domain.ErrSameAccountTransfer), http.MethodPost, "/api/transfers", `{"amount":1}`)
 	if rec.Code != http.StatusBadRequest || resp.Error.Code != "SAME_ACCOUNT_TRANSFER" {
 		t.Errorf("status = %d, error = %+v", rec.Code, resp.Error)
+	}
+}
+
+func TestOperationMetrics(t *testing.T) {
+	accountPath := "/api/accounts/" + uuid.NewString()
+	recorder := &stubRecorder{}
+	mux := http.NewServeMux()
+	NewOperation(&stubMover{}, &stubMover{err: domain.ErrInsufficientBalance}, stubTransferer{err: errors.New("db down")}, recorder).Register(mux)
+
+	do(t, mux, http.MethodPost, accountPath+"/deposits", `{"amount":100}`)
+	do(t, mux, http.MethodPost, accountPath+"/withdrawals", `{"amount":50}`)
+	do(t, mux, http.MethodPost, "/api/transfers", `{"amount":7}`)
+	do(t, mux, http.MethodPost, accountPath+"/deposits", `{bad json`)
+
+	want := []string{"deposit:100:ok", "withdrawal:50:INSUFFICIENT_BALANCE", "transfer:7:INTERNAL_ERROR"}
+	if fmt.Sprint(recorder.calls) != fmt.Sprint(want) {
+		t.Errorf("calls = %v, want %v", recorder.calls, want)
 	}
 }

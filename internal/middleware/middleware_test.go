@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -201,6 +202,38 @@ func TestCORS(t *testing.T) {
 func TestDurationMs(t *testing.T) {
 	if got := durationMs(1234567 * time.Nanosecond); got != 1.234 {
 		t.Errorf("durationMs = %v, want 1.234", got)
+	}
+}
+
+type fakeObserver struct {
+	inFlight int
+	finished []string
+}
+
+func (f *fakeObserver) RequestStarted() { f.inFlight++ }
+
+func (f *fakeObserver) RequestFinished(method, route string, status int, _ time.Duration) {
+	f.inFlight--
+	f.finished = append(f.finished, fmt.Sprintf("%s %s %d", method, route, status))
+}
+
+func TestMetricsMiddleware(t *testing.T) {
+	obs := &fakeObserver{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/accounts/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	handler := Metrics(obs)(mux)
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/accounts/123", nil))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("BREW", "/coffee", nil))
+
+	want := []string{"GET /api/accounts/{id} 404", "OTHER unmatched 404"}
+	if fmt.Sprint(obs.finished) != fmt.Sprint(want) {
+		t.Errorf("finished = %v, want %v", obs.finished, want)
+	}
+	if obs.inFlight != 0 {
+		t.Errorf("inFlight = %d, want 0", obs.inFlight)
 	}
 }
 

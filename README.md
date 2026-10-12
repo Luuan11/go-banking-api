@@ -10,7 +10,7 @@ A banking REST API written in Go, following Clean Architecture. It handles custo
 - A daily debit limit per account (withdrawals + outgoing transfers)
 - Paginated account statements, backed by an immutable ledger (`balance_before` / `balance_after`)
 - Versioned SQL migrations embedded in the binary
-- Structured JSON logs (`slog`), graceful shutdown, server timeouts and a `/health` endpoint
+- Structured JSON logs with request IDs, Prometheus metrics, graceful shutdown and server timeouts
 - Unit tests, PostgreSQL integration tests (including concurrency tests) and CI
 
 ## Tech stack
@@ -71,6 +71,7 @@ All amounts are integers in **cents** (`1050` = R$ 10,50). Every response uses t
 | Method | Path                                 | Description                     |
 | ------ | ------------------------------------ | ------------------------------- |
 | GET    | `/health`                            | Health check (pings the database) |
+| GET    | `/metrics`                           | Prometheus metrics              |
 | POST   | `/api/customers`                     | Create a customer               |
 | GET    | `/api/customers/{id}`                | Get a customer                  |
 | POST   | `/api/accounts`                      | Open an account                 |
@@ -137,6 +138,37 @@ Logs are structured JSON on stdout. Every request gets an `X-Request-ID`: a well
 - The level follows the status: `ERROR` for 5xx, `WARN` for 4xx and `INFO` otherwise. Health checks and metric scrapes log at `DEBUG`, so they don't flood the logs.
 - `route` is the matched pattern, which is safe to group by. `path` is the concrete URL.
 - `error_code` is the same code returned to the client.
+
+### Metrics
+
+`GET /metrics` exposes Prometheus metrics:
+
+| Metric | Labels | Use |
+| ------ | ------ | --- |
+| `http_requests_total` | `method`, `route`, `status` | Traffic and error rate |
+| `http_request_duration_seconds` | `method`, `route` | Latency (p50/p95/p99) |
+| `http_requests_in_flight` | | Saturation |
+| `bank_operations_total` | `operation`, `result` | Deposits, withdrawals and transfers, by `ok` or error code |
+| `bank_operation_amount_cents_total` | `operation` | Money moved by successful operations |
+| `go_sql_*` | `db_name` | Connection pool (open, in use, wait count and duration) |
+| `bank_build_info` | `version`, `go_version` | Which version is running |
+| `go_*`, `process_*` | | Runtime: goroutines, GC, memory, CPU, file descriptors |
+
+`route` is the route pattern and the methods are a fixed list, so label cardinality stays bounded.
+
+Example queries:
+
+```promql
+# error rate (5xx) per route
+sum by (route) (rate(http_requests_total{status=~"5.."}[5m]))
+  / sum by (route) (rate(http_requests_total[5m]))
+
+# p95 latency per route
+histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m])))
+
+# transfers rejected for lack of funds
+rate(bank_operations_total{operation="transfer", result="INSUFFICIENT_BALANCE"}[5m])
+```
 
 ## Design notes
 

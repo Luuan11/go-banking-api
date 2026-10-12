@@ -36,17 +36,26 @@ var errorMappings = []errorMapping{
 	{domain.ErrAccountInactive, http.StatusUnprocessableEntity, "ACCOUNT_INACTIVE"},
 }
 
-// writeError maps domain errors to HTTP; unknown errors become a logged 500.
-func writeError(w http.ResponseWriter, r *http.Request, err error) {
+var internalError = errorMapping{nil, http.StatusInternalServerError, "INTERNAL_ERROR"}
+
+func classify(err error) errorMapping {
 	for _, m := range errorMappings {
 		if errors.Is(err, m.err) {
-			middleware.SetErrorCode(r.Context(), m.code)
-			Error(w, m.status, m.code, m.err.Error())
-			return
+			return m
 		}
 	}
+	return internalError
+}
 
-	middleware.SetErrorCode(r.Context(), "INTERNAL_ERROR")
-	slog.ErrorContext(r.Context(), "unhandled error", "method", r.Method, "path", r.URL.Path, "error", err)
-	Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+// writeError maps domain errors to HTTP; unknown errors become a logged 500.
+func writeError(w http.ResponseWriter, r *http.Request, err error) {
+	m := classify(err)
+	middleware.SetErrorCode(r.Context(), m.code)
+
+	if m.err == nil {
+		slog.ErrorContext(r.Context(), "unhandled error", "method", r.Method, "path", r.URL.Path, "error", err)
+		Error(w, m.status, m.code, "Internal server error")
+		return
+	}
+	Error(w, m.status, m.code, m.err.Error())
 }

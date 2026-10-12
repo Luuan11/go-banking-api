@@ -90,6 +90,36 @@ func Logger(next http.Handler) http.Handler {
 	})
 }
 
+type RequestObserver interface {
+	RequestStarted()
+	RequestFinished(method, route string, status int, d time.Duration)
+}
+
+// Metrics must wrap the router so r.Pattern is set when it records.
+func Metrics(o RequestObserver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			o.RequestStarted()
+
+			next.ServeHTTP(rec, r)
+
+			o.RequestFinished(method(r), Route(r), rec.status, time.Since(start))
+		})
+	}
+}
+
+// method bounds label cardinality against arbitrary client methods.
+func method(r *http.Request) string {
+	switch r.Method {
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodHead, http.MethodOptions:
+		return r.Method
+	}
+	return "OTHER"
+}
+
 // Route is the matched pattern without the method, or "unmatched".
 func Route(r *http.Request) string {
 	if r.Pattern == "" {

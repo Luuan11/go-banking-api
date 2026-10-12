@@ -12,6 +12,7 @@ import (
 	"time"
 
 	httpHandler "github.com/luuan11/bank-system/internal/handler/http"
+	"github.com/luuan11/bank-system/internal/metrics"
 	"github.com/luuan11/bank-system/internal/middleware"
 	"github.com/luuan11/bank-system/internal/repository/postgres"
 	"github.com/luuan11/bank-system/internal/usecase"
@@ -54,6 +55,9 @@ func run() error {
 		return err
 	}
 
+	m := metrics.New(version)
+	m.RegisterDB(db)
+
 	customerRepo := postgres.NewCustomer(db)
 	accountRepo := postgres.NewAccount(db)
 	transactionRepo := postgres.NewTransaction(db)
@@ -74,12 +78,16 @@ func run() error {
 			usecase.NewDeposit(uow),
 			usecase.NewWithdraw(uow),
 			usecase.NewTransfer(uow),
+			m,
 		),
+		httpHandler.RegisterFunc(func(mux *http.ServeMux) {
+			mux.Handle("GET /metrics", m.Handler())
+		}),
 	)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.ServerPort,
-		Handler:           middleware.RequestID(middleware.Logger(middleware.Recovery(middleware.CORS(router)))),
+		Handler:           middleware.RequestID(middleware.Logger(middleware.Metrics(m)(middleware.Recovery(middleware.CORS(router))))),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
