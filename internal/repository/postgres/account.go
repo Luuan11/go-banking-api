@@ -10,10 +10,10 @@ import (
 )
 
 type Account struct {
-	db *sql.DB
+	db DBTX
 }
 
-func NewAccount(db *sql.DB) *Account {
+func NewAccount(db DBTX) *Account {
 	return &Account{db: db}
 }
 

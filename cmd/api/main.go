@@ -29,13 +29,18 @@ func main() {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 
+	customerRepo := postgres.NewCustomer(db)
 	accountRepo := postgres.NewAccount(db)
-	createAccountUC := usecase.NewCreateAccount(accountRepo)
-	accountHandler := httpHandler.NewAccount(createAccountUC)
+
+	customerHandler := httpHandler.NewCustomer(
+		usecase.NewCreateCustomer(customerRepo),
+		usecase.NewGetCustomer(customerRepo),
+	)
+	accountHandler := httpHandler.NewAccount(usecase.NewCreateAccount(accountRepo))
 
 	mux := http.NewServeMux()
-	// maybe I created a /health
-	mux.HandleFunc("/api/accounts", accountHandler.Create)
+	customerHandler.Register(mux)
+	accountHandler.Register(mux)
 
 	handler := middleware.Recovery(middleware.Logger(middleware.CORS(mux)))
 
