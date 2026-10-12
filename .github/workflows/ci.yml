@@ -100,9 +100,31 @@ jobs:
           curl -fsS $api/metrics | grep 'bank_operations_total{operation="withdrawal",result="INSUFFICIENT_BALANCE"} 1'
           curl -fsS $api/metrics | grep "bank_build_info{go_version=\"go.*\",version=\"ci-${GITHUB_SHA}\"} 1"
 
-          test "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)")" = healthy
-          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22bank-api%22%7D' | grep '"value":\[[0-9.]*,"1"\]'
-          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors -u admin:admin http://localhost:3000/api/dashboards/uid/bank-api | jq -e '.dashboard.title == "Bank API"'
+      # Scrapes and provisioning happen asynchronously, so poll for them.
+      - name: Observability stack
+        run: |
+          eventually() {
+            for _ in $(seq 1 20); do
+              if "$@"; then return 0; fi
+              sleep 3
+            done
+            echo "timed out: $*"; return 1
+          }
+          container_healthy() {
+            test "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)")" = healthy
+          }
+          scraped() {
+            curl -fsS 'http://localhost:9090/api/v1/query?query=up%7Bjob%3D%22bank-api%22%7D' \
+              | jq -e '.data.result[0].value[1] == "1"'
+          }
+          dashboard() {
+            curl -fsS -u admin:admin http://localhost:3000/api/dashboards/uid/bank-api \
+              | jq -e '.dashboard.title == "Bank API"'
+          }
+
+          echo "::group::container health"; eventually container_healthy; echo "::endgroup::"
+          echo "::group::prometheus scrape"; eventually scraped; echo "::endgroup::"
+          echo "::group::grafana dashboard"; eventually dashboard; echo "::endgroup::"
 
       - name: Graceful shutdown
         run: |
