@@ -16,6 +16,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/luuan11/bank-system/internal/domain"
@@ -204,6 +205,22 @@ func TestMoneyFlow(t *testing.T) {
 	statement, err := a.listTransactions.Execute(ctx, usecase.ListTransactionsInput{AccountID: from.ID})
 	if err != nil {
 		t.Fatalf("list: %v", err)
+	}
+
+	// What the API returns right after a write must be exactly what it
+	// returns when reading the same data back.
+	stored, err := a.accounts.FindByID(ctx, from.ID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+	if !stored.CreatedAt.Equal(from.CreatedAt) || stored.CreatedAt.Location() != time.UTC {
+		t.Errorf("created_at = %v, want %v (UTC)", stored.CreatedAt, from.CreatedAt)
+	}
+	if !stored.UpdatedAt.Equal(out.Debit.CreatedAt) {
+		t.Errorf("updated_at = %v, want %v", stored.UpdatedAt, out.Debit.CreatedAt)
+	}
+	if got := statement.Items[0].CreatedAt; !got.Equal(out.Debit.CreatedAt) || got.Location() != time.UTC {
+		t.Errorf("statement created_at = %v, want %v", got, out.Debit.CreatedAt)
 	}
 	if statement.Total != 3 {
 		t.Fatalf("total = %d, want 3 (deposit, withdrawal, transfer_out)", statement.Total)

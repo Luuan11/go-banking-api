@@ -27,7 +27,7 @@ type CreateCustomer struct {
 func NewCreateCustomer(customerRepo repository.Customer) *CreateCustomer {
 	return &CreateCustomer{
 		customerRepo: customerRepo,
-		now:          time.Now,
+		now:          domain.Now,
 	}
 }
 

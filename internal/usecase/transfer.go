@@ -29,7 +29,7 @@ type Transfer struct {
 }
 
 func NewTransfer(uow repository.UnitOfWork) *Transfer {
-	return &Transfer{uow: uow, now: time.Now}
+	return &Transfer{uow: uow, now: domain.Now}
 }
 
 func (uc *Transfer) Execute(ctx context.Context, input TransferInput) (*TransferOutput, error) {

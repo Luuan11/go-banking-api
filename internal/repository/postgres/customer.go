@@ -64,5 +64,9 @@ func (r *Customer) FindByID(ctx context.Context, id uuid.UUID) (*domain.Customer
 		}
 		return nil, err
 	}
+
+	customer.BirthDate = customer.BirthDate.UTC()
+	customer.CreatedAt = customer.CreatedAt.UTC()
+	customer.UpdatedAt = customer.UpdatedAt.UTC()
 	return customer, nil
 }

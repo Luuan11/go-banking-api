@@ -22,7 +22,7 @@ type Deposit struct {
 }
 
 func NewDeposit(uow repository.UnitOfWork) *Deposit {
-	return &Deposit{uow: uow, now: time.Now}
+	return &Deposit{uow: uow, now: domain.Now}
 }
 
 func (uc *Deposit) Execute(ctx context.Context, accountID uuid.UUID, input MovementInput) (*domain.Transaction, error) {

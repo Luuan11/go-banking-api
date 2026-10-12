@@ -15,7 +15,7 @@ type Withdraw struct {
 }
 
 func NewWithdraw(uow repository.UnitOfWork) *Withdraw {
-	return &Withdraw{uow: uow, now: time.Now}
+	return &Withdraw{uow: uow, now: domain.Now}
 }
 
 func (uc *Withdraw) Execute(ctx context.Context, accountID uuid.UUID, input MovementInput) (*domain.Transaction, error) {

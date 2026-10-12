@@ -93,6 +93,7 @@ func (r *Transaction) ListByAccount(ctx context.Context, accountID uuid.UUID, li
 		); err != nil {
 			return nil, 0, err
 		}
+		t.CreatedAt = t.CreatedAt.UTC()
 		transactions = append(transactions, t)
 	}
 

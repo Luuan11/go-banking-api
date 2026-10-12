@@ -31,7 +31,7 @@ type Account struct {
 }
 
 func NewAccount(customerID uuid.UUID, accountType AccountType) *Account {
-	now := time.Now().UTC()
+	now := Now()
 	return &Account{
 		ID:         uuid.New(),
 		CustomerID: customerID,
