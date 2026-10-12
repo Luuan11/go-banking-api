@@ -41,9 +41,16 @@ func main() {
 		usecase.NewGetAccount(accountRepo),
 	)
 
+	uow := postgres.NewUnitOfWork(db)
+	operationHandler := httpHandler.NewOperation(
+		usecase.NewDeposit(uow),
+		usecase.NewWithdraw(uow),
+	)
+
 	mux := http.NewServeMux()
 	customerHandler.Register(mux)
 	accountHandler.Register(mux)
+	operationHandler.Register(mux)
 
 	handler := middleware.Recovery(middleware.Logger(middleware.CORS(mux)))
 

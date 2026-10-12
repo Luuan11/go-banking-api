@@ -17,4 +17,7 @@ var (
 	ErrInvalidAccountNumber  = errors.New("invalid account number")
 	ErrInsufficientBalance   = errors.New("insufficient balance")
 	ErrAccountInactive       = errors.New("account inactive")
+	ErrInvalidAmount         = errors.New("amount must be a positive number of cents")
+	ErrInvalidDescription    = errors.New("description must have at most 255 characters")
+	ErrDailyLimitExceeded    = errors.New("daily limit exceeded")
 )

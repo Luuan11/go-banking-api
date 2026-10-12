@@ -57,6 +57,32 @@ func (r *Account) FindByID(ctx context.Context, id uuid.UUID) (*domain.Account, 
 	return r.scanAccount(r.db.QueryRowContext(ctx, query, id))
 }
 
+func (r *Account) FindByIDForUpdate(ctx context.Context, id uuid.UUID) (*domain.Account, error) {
+	query := `SELECT ` + accountColumns + ` FROM accounts WHERE id = $1 FOR UPDATE`
+	return r.scanAccount(r.db.QueryRowContext(ctx, query, id))
+}
+
+func (r *Account) UpdateBalance(ctx context.Context, account *domain.Account) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		`UPDATE accounts SET balance = $2, updated_at = $3 WHERE id = $1`,
+		account.ID,
+		account.Balance,
+		account.UpdatedAt,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return domain.ErrAccountNotFound
+	}
+	return nil
+}
+
 func (r *Account) FindByNumber(ctx context.Context, number string) (*domain.Account, error) {
 	query := `SELECT ` + accountColumns + ` FROM accounts WHERE number = $1`
 	return r.scanAccount(r.db.QueryRowContext(ctx, query, number))

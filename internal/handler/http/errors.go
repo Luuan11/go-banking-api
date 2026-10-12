@@ -23,10 +23,15 @@ var errorMappings = []errorMapping{
 	{domain.ErrInvalidAccountType, http.StatusBadRequest, "INVALID_ACCOUNT_TYPE"},
 	{domain.ErrInvalidCustomerID, http.StatusBadRequest, "INVALID_CUSTOMER_ID"},
 	{domain.ErrInvalidAccountID, http.StatusBadRequest, "INVALID_ACCOUNT_ID"},
+	{domain.ErrInvalidAmount, http.StatusBadRequest, "INVALID_AMOUNT"},
+	{domain.ErrInvalidDescription, http.StatusBadRequest, "INVALID_DESCRIPTION"},
 	{domain.ErrCustomerNotFound, http.StatusNotFound, "CUSTOMER_NOT_FOUND"},
 	{domain.ErrAccountNotFound, http.StatusNotFound, "ACCOUNT_NOT_FOUND"},
 	{domain.ErrCustomerAlreadyExists, http.StatusConflict, "CUSTOMER_EXISTS"},
 	{domain.ErrAccountAlreadyExists, http.StatusConflict, "ACCOUNT_EXISTS"},
+	{domain.ErrInsufficientBalance, http.StatusUnprocessableEntity, "INSUFFICIENT_BALANCE"},
+	{domain.ErrDailyLimitExceeded, http.StatusUnprocessableEntity, "DAILY_LIMIT_EXCEEDED"},
+	{domain.ErrAccountInactive, http.StatusUnprocessableEntity, "ACCOUNT_INACTIVE"},
 }
 
 // writeError translates domain errors into HTTP responses. Anything unknown
