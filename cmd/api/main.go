@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	httpHandler "github.com/luuan11/bank-system/internal/handler/http"
 	"github.com/luuan11/bank-system/internal/middleware"
@@ -14,52 +19,80 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
-	log.Println("configuration loaded")
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
-	ctx := context.Background()
+	if err := run(); err != nil {
+		slog.Error("server stopped with error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cfg := config.Load()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	db, err := database.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		return err
 	}
 	defer db.Close()
+	slog.Info("database connection established")
 
 	if err := database.Migrate(ctx, db); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+		return err
 	}
 
 	customerRepo := postgres.NewCustomer(db)
 	accountRepo := postgres.NewAccount(db)
 	transactionRepo := postgres.NewTransaction(db)
+	uow := postgres.NewUnitOfWork(db)
 
-	customerHandler := httpHandler.NewCustomer(
+	mux := http.NewServeMux()
+	httpHandler.NewHealth(db).Register(mux)
+	httpHandler.NewCustomer(
 		usecase.NewCreateCustomer(customerRepo),
 		usecase.NewGetCustomer(customerRepo),
-	)
-	accountHandler := httpHandler.NewAccount(
+	).Register(mux)
+	httpHandler.NewAccount(
 		usecase.NewCreateAccount(accountRepo, customerRepo),
 		usecase.NewGetAccount(accountRepo),
 		usecase.NewListTransactions(accountRepo, transactionRepo),
-	)
-
-	uow := postgres.NewUnitOfWork(db)
-	operationHandler := httpHandler.NewOperation(
+	).Register(mux)
+	httpHandler.NewOperation(
 		usecase.NewDeposit(uow),
 		usecase.NewWithdraw(uow),
 		usecase.NewTransfer(uow),
-	)
+	).Register(mux)
 
-	mux := http.NewServeMux()
-	customerHandler.Register(mux)
-	accountHandler.Register(mux)
-	operationHandler.Register(mux)
-
-	handler := middleware.Recovery(middleware.Logger(middleware.CORS(mux)))
-
-	addr := ":" + cfg.ServerPort
-	log.Printf("server starting on port %s", cfg.ServerPort)
-	if err := http.ListenAndServe(addr, handler); err != nil {
-		log.Fatalf("failed to start server: %v", err)
+	server := &http.Server{
+		Addr:              ":" + cfg.ServerPort,
+		Handler:           middleware.Recovery(middleware.Logger(middleware.CORS(mux))),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		slog.Info("server starting", "port", cfg.ServerPort)
+		serverErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+	}
+
+	slog.Info("shutting down server")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+
+	return server.Shutdown(shutdownCtx)
 }
