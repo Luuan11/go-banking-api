@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 
@@ -16,14 +17,16 @@ func main() {
 	cfg := config.Load()
 	log.Println("configuration loaded")
 
-	db, err := database.Connect(cfg.DatabaseURL)
+	ctx := context.Background()
+
+	db, err := database.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
-	if err := database.CreateTables(db); err != nil {
-		log.Fatalf("failed to create tables: %v", err)
+	if err := database.Migrate(ctx, db); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
 	}
 
 	accountRepo := postgres.NewAccount(db)
