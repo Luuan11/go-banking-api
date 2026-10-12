@@ -22,6 +22,7 @@ var errorMappings = []errorMapping{
 	{domain.ErrInvalidBirthDate, http.StatusBadRequest, "INVALID_BIRTH_DATE"},
 	{domain.ErrInvalidAccountType, http.StatusBadRequest, "INVALID_ACCOUNT_TYPE"},
 	{domain.ErrInvalidCustomerID, http.StatusBadRequest, "INVALID_CUSTOMER_ID"},
+	{domain.ErrInvalidAccountID, http.StatusBadRequest, "INVALID_ACCOUNT_ID"},
 	{domain.ErrCustomerNotFound, http.StatusNotFound, "CUSTOMER_NOT_FOUND"},
 	{domain.ErrAccountNotFound, http.StatusNotFound, "ACCOUNT_NOT_FOUND"},
 	{domain.ErrCustomerAlreadyExists, http.StatusConflict, "CUSTOMER_EXISTS"},

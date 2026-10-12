@@ -36,7 +36,10 @@ func main() {
 		usecase.NewCreateCustomer(customerRepo),
 		usecase.NewGetCustomer(customerRepo),
 	)
-	accountHandler := httpHandler.NewAccount(usecase.NewCreateAccount(accountRepo))
+	accountHandler := httpHandler.NewAccount(
+		usecase.NewCreateAccount(accountRepo, customerRepo),
+		usecase.NewGetAccount(accountRepo),
+	)
 
 	mux := http.NewServeMux()
 	customerHandler.Register(mux)
