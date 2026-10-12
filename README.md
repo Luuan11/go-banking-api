@@ -56,6 +56,8 @@ go run ./cmd/api
 | `DATABASE_URL`     | `postgres://bankuser:bankpass@localhost:5432/bankdb?sslmode=disable`     |
 | `SERVER_PORT`      | `8080`                                                                   |
 | `SHUTDOWN_TIMEOUT` | `10s`                                                                    |
+| `LOG_LEVEL`        | `info` (`debug`, `info`, `warn`, `error`)                                |
+| `LOG_FORMAT`       | `json` (`json`, `text`)                                                  |
 
 ## API
 
@@ -121,6 +123,20 @@ curl "localhost:8080/api/accounts/<account id>/transactions?limit=10"
 | 409 | `CUSTOMER_EXISTS`, `ACCOUNT_EXISTS` |
 | 422 | `INSUFFICIENT_BALANCE`, `DAILY_LIMIT_EXCEEDED`, `ACCOUNT_INACTIVE` |
 | 503 | `DATABASE_UNAVAILABLE` |
+
+## Observability
+
+### Logs
+
+Logs are structured JSON on stdout. Every request gets an `X-Request-ID`: a well-formed incoming one is reused, otherwise one is generated. It is returned in the response and added to **every** log line written while handling the request, including errors and recovered panics.
+
+```json
+{"time":"...","level":"WARN","msg":"request","service":"bank-api","version":"1.2.0","method":"POST","route":"/api/accounts/{id}/withdrawals","path":"/api/accounts/0735.../withdrawals","status":422,"bytes":98,"duration_ms":3.412,"remote_addr":"10.0.0.7:51234","user_agent":"curl/8.5.0","error_code":"INSUFFICIENT_BALANCE","request_id":"7c1e..."}
+```
+
+- The level follows the status: `ERROR` for 5xx, `WARN` for 4xx and `INFO` otherwise. Health checks and metric scrapes log at `DEBUG`, so they don't flood the logs.
+- `route` is the matched pattern, which is safe to group by. `path` is the concrete URL.
+- `error_code` is the same code returned to the client.
 
 ## Design notes
 

@@ -9,6 +9,8 @@ type Config struct {
 	DatabaseURL     string
 	ServerPort      string
 	ShutdownTimeout time.Duration
+	LogLevel        string
+	LogFormat       string
 }
 
 func Load() *Config {
@@ -16,6 +18,8 @@ func Load() *Config {
 		DatabaseURL:     getEnv("DATABASE_URL", "postgres://bankuser:bankpass@localhost:5432/bankdb?sslmode=disable"),
 		ServerPort:      getEnv("SERVER_PORT", "8080"),
 		ShutdownTimeout: getDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
+		LogLevel:        getEnv("LOG_LEVEL", "info"),
+		LogFormat:       getEnv("LOG_FORMAT", "json"),
 	}
 }
 

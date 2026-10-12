@@ -9,9 +9,12 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("SERVER_PORT", "")
 	t.Setenv("SHUTDOWN_TIMEOUT", "")
+	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("LOG_FORMAT", "")
 
 	cfg := Load()
-	if cfg.ServerPort != "8080" || cfg.ShutdownTimeout != 10*time.Second || cfg.DatabaseURL == "" {
+	if cfg.ServerPort != "8080" || cfg.ShutdownTimeout != 10*time.Second || cfg.DatabaseURL == "" ||
+		cfg.LogLevel != "info" || cfg.LogFormat != "json" {
 		t.Errorf("unexpected defaults: %+v", cfg)
 	}
 }

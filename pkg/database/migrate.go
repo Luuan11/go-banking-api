@@ -44,16 +44,17 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	}
 	sort.Strings(files)
 
+	applied := 0
 	for _, file := range files {
 		version := strings.TrimSuffix(strings.TrimPrefix(file, "migrations/"), ".sql")
 
-		var applied bool
+		var done bool
 		if err := conn.QueryRowContext(ctx,
 			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, version,
-		).Scan(&applied); err != nil {
+		).Scan(&done); err != nil {
 			return fmt.Errorf("failed to check migration %s: %w", version, err)
 		}
-		if applied {
+		if done {
 			continue
 		}
 
@@ -66,8 +67,10 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 		slog.Info("migration applied", "version", version)
+		applied++
 	}
 
+	slog.Info("migrations up to date", "applied", applied, "total", len(files))
 	return nil
 }
 

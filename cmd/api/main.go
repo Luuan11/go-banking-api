@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -16,11 +17,13 @@ import (
 	"github.com/luuan11/bank-system/internal/usecase"
 	"github.com/luuan11/bank-system/pkg/config"
 	"github.com/luuan11/bank-system/pkg/database"
+	"github.com/luuan11/bank-system/pkg/logger"
 )
 
-func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
 
+func main() {
 	if err := run(); err != nil {
 		slog.Error("server stopped with error", "error", err)
 		os.Exit(1)
@@ -29,6 +32,13 @@ func main() {
 
 func run() error {
 	cfg := config.Load()
+
+	log, err := logger.New(os.Stdout, cfg.LogLevel, cfg.LogFormat, "service", "bank-api", "version", version)
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(log)
+	slog.Info("starting", "go_version", runtime.Version(), "port", cfg.ServerPort, "log_level", cfg.LogLevel)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -69,7 +79,7 @@ func run() error {
 
 	server := &http.Server{
 		Addr:              ":" + cfg.ServerPort,
-		Handler:           middleware.Recovery(middleware.Logger(middleware.CORS(router))),
+		Handler:           middleware.RequestID(middleware.Logger(middleware.Recovery(middleware.CORS(router)))),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -78,7 +88,7 @@ func run() error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		slog.Info("server starting", "port", cfg.ServerPort)
+		slog.Info("server listening", "addr", server.Addr)
 		serverErr <- server.ListenAndServe()
 	}()
 
@@ -91,7 +101,7 @@ func run() error {
 	case <-ctx.Done():
 	}
 
-	slog.Info("shutting down server")
+	slog.Info("shutting down", "timeout", cfg.ShutdownTimeout.String())
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 

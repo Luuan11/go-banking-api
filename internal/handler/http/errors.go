@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/luuan11/bank-system/internal/domain"
+	"github.com/luuan11/bank-system/internal/middleware"
 )
 
 type errorMapping struct {
@@ -39,11 +40,13 @@ var errorMappings = []errorMapping{
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	for _, m := range errorMappings {
 		if errors.Is(err, m.err) {
+			middleware.SetErrorCode(r.Context(), m.code)
 			Error(w, m.status, m.code, m.err.Error())
 			return
 		}
 	}
 
+	middleware.SetErrorCode(r.Context(), "INTERNAL_ERROR")
 	slog.ErrorContext(r.Context(), "unhandled error", "method", r.Method, "path", r.URL.Path, "error", err)
 	Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 }
